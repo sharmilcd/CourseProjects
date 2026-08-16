@@ -1,2 +1,2 @@
-# MiniProjects
-In this repository I have added the mini projects I have done as part of my courses.
+# CourseProjects
+In this repository I have added the projects I have done as part of my courses.
