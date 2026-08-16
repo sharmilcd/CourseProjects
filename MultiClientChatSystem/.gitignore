@@ -1,0 +1,13 @@
+# Build artifacts
+obj/
+*.o
+discovery_server
+chat_client
+server_fork
+server_thread
+server_epoll
+benchmark_client
+
+# Python tooling
+.venv/
+__pycache__/

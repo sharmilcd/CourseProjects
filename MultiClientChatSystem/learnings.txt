@@ -1,0 +1,99 @@
+Learnings and Challenges - Assignment 2
+
+Built a multi-client chat system with three interchangeable server architectures
+(fork, pthreads, epoll) behind one custom TLV protocol over TCP, then benchmarked
+them against each other from 10 to 50 concurrent connections.
+
+WHAT THE BENCHMARK MEASURES
+Each client registers with the discovery server, logs in to the chat server, then
+issues a paced stream of user-list requests for 25 seconds while holding its
+connection open. Server CPU (a delta from /proc/<pid>/stat), VmRSS, VmSize and PSS
+are sampled while all N connections are live, three repetitions per data point.
+
+RESULTS (median of 3 reps, 50 concurrent clients)
+
+                     fork      thread     epoll
+  CPU                15.3%     26.6%      13.3%
+  Resident (VmRSS)   6.5 MB    16.1 MB    1.1 MB
+  Virtual (VmSize)   134 MB    3603 MB    3 MB
+  Median RTT         0.11 ms   0.14 ms    0.23 ms
+
+  Marginal cost per additional client:
+                     fork      thread     epoll
+  Resident           108 KB    323 KB     ~0 KB
+  Virtual            2.6 MB    72.0 MB    0 MB
+
+THREADS COST MORE RESIDENT MEMORY THAN PROCESSES
+This is backwards from the usual "threads are lightweight" intuition, and the
+virtual-memory column explains why: the threaded server grows by exactly 72 MB of
+address space per client, which is an 8 MB thread stack plus a 64 MB glibc malloc
+arena. Every thread gets its own arena because the arena cap is 8 x number of
+cores (160 on this 20-core box), so all 50 threads qualify. A forked child instead
+shares the parent's pages copy-on-write and only pays for what it dirties.
+
+Most of that 72 MB is reservation, not real memory - which is the actual lesson.
+VmSize measures address space and VmRSS measures committed pages; an 8 MB stack
+costs 8 MB of the former and a couple of pages of the latter. Quoting VmSize as
+"memory used" would have overstated the threaded server by ~200x.
+
+EPOLL'S FLAT FOOTPRINT IS PARTLY ARCHITECTURE AND PARTLY A FIXED TABLE
+epoll holds resident memory constant across the whole load range. One process, one
+stack, one arena, none of which multiply per client. But it also preallocates
+users[MAX_CLIENTS] at startup, so the memory for 50 clients is already committed
+before the first one connects. A version allocating per-connection state
+dynamically would still be far below fork and thread, but not perfectly flat.
+
+EPOLL TRADES LATENCY FOR EFFICIENCY
+epoll used the least CPU and the least memory but had the *highest* median latency
+(0.23 ms vs fork's 0.11 ms). It is single-threaded, so 50 clients serialise through
+one event loop, while fork and thread spread across 20 cores. Lowest resource usage
+and lowest latency are not the same objective.
+
+BUGS THE BENCHMARK EXPOSED (all fixed)
+
+1. A ~40 ms floor under every round trip. send_message() wrote the 3-byte header
+   and the payload as two separate send() calls. Nagle's algorithm held the second
+   write until the peer ACKed the first, and the peer's delayed-ACK timer only
+   fires after ~40 ms. Coalescing both into a single write took the median round
+   trip from 49 ms to 0.15 ms - a ~350x improvement that had nothing to do with
+   which concurrency model was running. Until this was fixed the three
+   architectures looked identical on latency, because the stall dominated
+   everything else.
+
+2. A stack buffer overflow at scale. The user-list reply was built by strcat-ing
+   ~21-byte entries into char user_list[512], which overflows once ~24 users are
+   online - so every run at 30 clients and above was corrupting the stack.
+
+3. Negative round-trip times. Timing used gettimeofday(), i.e. CLOCK_REALTIME,
+   which can jump backwards; under WSL2 the VM resyncs its clock against the host
+   and produced RTTs of about -717 ms. A stopwatch needs CLOCK_MONOTONIC.
+
+4. listen() backlog of 10 while 50 clients connected simultaneously, so the kernel
+   silently dropped SYNs and some clients never appeared in the results. The
+   monitor now logs the count of established connections next to every sample, so
+   a run where clients failed to connect is visible in the data instead of being
+   quietly averaged in.
+
+MEASUREMENT MISTAKES THAT INVALIDATED THE FIRST ROUND OF RESULTS
+
+- ps -o %cpu reports an average over the whole process lifetime, so on a server
+  that spends most of its life blocked it rounds to 0.0 at every load level. The
+  entire CPU column was zeros. It has to be a delta of utime+stime over a window.
+
+- The harness reused one server process for all five load levels. glibc caches
+  exited threads' stacks and never returns secondary arenas, so the 50-client
+  sample also carried everything the earlier rounds left behind - a high-water
+  mark over ~150 cumulative sessions rather than the cost of 50 live clients.
+  Processes return everything on exit, so the fork model was not distorted the
+  same way and the two were not comparable. Restarting the server per data point
+  fixed it.
+
+- The client measured one round trip and then slept, so the server was idle for
+  the entire sampling window and the single latency sample was taken during the
+  connect stampede rather than in steady state.
+
+KEY TAKEAWAY
+Most of what the first benchmark "found" was measuring the harness, not the
+servers. A result that agrees with intuition still needs its measurement checked -
+and one that contradicts intuition (threads heavier than processes) can be
+perfectly real once you know which counter you are reading.
