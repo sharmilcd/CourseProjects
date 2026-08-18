@@ -1,0 +1,13 @@
+# Build artifacts
+rip
+rip.exe
+*.o
+*.obj
+*.exe
+
+# Test scratch
+tests/actual/
+
+# macOS archive junk
+__MACOSX/
+.DS_Store

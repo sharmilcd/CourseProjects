@@ -1,0 +1,5 @@
+# Keep line endings LF everywhere: the shell harness and the reference
+# outputs it diffs against must match byte-for-byte on Linux and Windows.
+* text=auto eol=lf
+
+*.pdf binary

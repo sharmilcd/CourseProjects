@@ -1,0 +1,24 @@
+
+Select Routing Mode:
+1. Use Poisoned Reverse (Safe)
+0. Disable Poisoned Reverse (Trigger Count-to-Infinity)
+Choice: 
+--- INITIAL CONVERGENCE ---
+--> Algorithm converged in 2 rounds.
+Printing the routing tables after the convergence 
+X:
+192.168.0.1 | 192.168.0.1 | 192.168.0.1 | 0
+192.168.0.2 | 192.168.0.2 | 192.168.0.1 | 7
+Y:
+192.168.0.2 | 192.168.0.2 | 192.168.0.2 | 0
+192.168.0.1 | 192.168.0.1 | 192.168.0.2 | 7
+
+--- SIMULATING LINK FAILURE (X to Y) ---
+--> Algorithm converged in 2 rounds.
+Printing the routing tables after the convergence 
+X:
+192.168.0.1 | 192.168.0.1 | 192.168.0.1 | 0
+192.168.0.2 | 192.168.0.2 | 192.168.0.1 | 16
+Y:
+192.168.0.2 | 192.168.0.2 | 192.168.0.2 | 0
+192.168.0.1 | 192.168.0.1 | 192.168.0.2 | 16
