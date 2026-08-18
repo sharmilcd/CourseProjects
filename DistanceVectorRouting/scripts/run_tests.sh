@@ -39,11 +39,13 @@ for input in tests/input/*.txt; do
       continue
     fi
 
-    if diff -q "tests/expected/$name.$mode.txt" "$result" >/dev/null 2>&1; then
+    # --strip-trailing-cr: the reference files are stored LF, but the simulator
+    # writes CRLF when built on Windows. Compare content, not line endings.
+    if diff --strip-trailing-cr -q "tests/expected/$name.$mode.txt" "$result" >/dev/null 2>&1; then
       echo "ok     $name [$mode]"
     else
       echo "FAIL   $name [$mode]"
-      diff "tests/expected/$name.$mode.txt" "$result" | head -20
+      diff --strip-trailing-cr "tests/expected/$name.$mode.txt" "$result" | head -20
       fail=1
     fi
   done
