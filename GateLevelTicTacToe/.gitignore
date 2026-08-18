@@ -1,0 +1,9 @@
+# Icarus Verilog build artifacts
+build/
+*.vvp
+*.out
+
+# Waveform dumps
+*.vcd
+*.fst
+*.lxt2
